@@ -1,0 +1,33 @@
+# GitLab CI: тесты в изолированном Docker-окружении, результаты — для Allure.
+stages:
+  - lint
+  - test
+
+lint:
+  stage: lint
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  script:
+    - uv sync --frozen --group dev
+    - uv run ruff check .
+    - uv run ruff format --check .
+    - uv run mypy
+
+api-tests:
+  stage: test
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    # В отдельном репозитории тестируемый сервис берётся из registry, а не собирается рядом.
+    AUT_IMAGE: $CI_REGISTRY_IMAGE/meetupboard:latest
+  script:
+    - docker compose up -d --wait db aut
+    - docker compose --profile tests run --rm tests
+  after_script:
+    - docker compose down -v
+  artifacts:
+    when: always
+    paths:
+      - allure-results/
+    expire_in: 1 week
